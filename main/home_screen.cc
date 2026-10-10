@@ -54,7 +54,7 @@ void HomeScreen::BuildScreen() {
     lv_obj_t* title = lv_label_create(screen_);
     lv_label_set_text(title, "Select Function");
     lv_obj_set_style_text_color(title, lv_color_hex(HS_TITLE), 0);
-    lv_obj_set_style_text_font(title, lv_font_monospace_28, 0);
+    lv_obj_set_style_text_font(title, lv_font_montserrat_28, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
 
     // Function cards (vertical list, max 4)
@@ -83,14 +83,14 @@ void HomeScreen::BuildScreen() {
         labels_[i] = lv_label_create(cards_[i]);
         lv_label_set_text(labels_[i], funcs_[i].name);
         lv_obj_set_style_text_color(labels_[i], lv_color_hex(HS_TEXT), 0);
-        lv_obj_set_style_text_font(labels_[i], lv_font_monospace_20, 0);
+        lv_obj_set_style_text_font(labels_[i], lv_font_montserrat_20, 0);
         lv_obj_align(labels_[i], LV_ALIGN_CENTER, 0, -12);
 
         // Subtitle label
         subtitles_[i] = lv_label_create(cards_[i]);
         lv_label_set_text(subtitles_[i], funcs_[i].subtitle);
         lv_obj_set_style_text_color(subtitles_[i], lv_color_hex(HS_HINT), 0);
-        lv_obj_set_style_text_font(subtitles_[i], lv_font_monospace_16, 0);
+        lv_obj_set_style_text_font(subtitles_[i], lv_font_montserrat_16, 0);
         lv_obj_align(subtitles_[i], LV_ALIGN_CENTER, 0, 16);
     }
 
@@ -98,7 +98,7 @@ void HomeScreen::BuildScreen() {
     hint_label_ = lv_label_create(screen_);
     lv_label_set_text(hint_label_, "UP/DOWN: Select  |  OK: Enter");
     lv_obj_set_style_text_color(hint_label_, lv_color_hex(HS_HINT), 0);
-    lv_obj_set_style_text_font(hint_label_, lv_font_monospace_16, 0);
+    lv_obj_set_style_text_font(hint_label_, lv_font_montserrat_16, 0);
     lv_obj_align(hint_label_, LV_ALIGN_BOTTOM_MID, 0, -16);
 
     RefreshSelection();
