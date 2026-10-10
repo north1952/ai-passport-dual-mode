@@ -156,6 +156,11 @@ private:
         ok->OnClick([this]() {
             Application::GetInstance().Schedule([this]() { ToggleChat(); });
         });
+        // Long-press OK to switch between Chat and Recording mode
+        // (More reliable than double-click on ADC resistor ladder buttons)
+        ok->OnLongPress([this]() {
+            Application::GetInstance().Schedule([this]() { SwitchMode(); });
+        });
     }
 
     void InitializeSpi() {
