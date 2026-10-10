@@ -41,6 +41,7 @@ set(SOURCES "audio/audio_codec.cc"
             "settings.cc"
             "device_state_machine.cc"
             "recording_streamer.cc"
+            "home_screen.cc"
             "assets.cc"
             "main.cc"
             )

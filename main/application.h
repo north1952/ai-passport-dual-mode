@@ -126,6 +126,8 @@ public:
     // Dual-mode: recording support
     AppMode GetAppMode() const { return app_mode_; }
     void SwitchAppMode();
+    void SwitchToChatMode();
+    void SwitchToRecordingMode();
     void StartRecording();
     void StopRecording();
     RecordingStreamer& GetRecordingStreamer() { return recording_streamer_; }

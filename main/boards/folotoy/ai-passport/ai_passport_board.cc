@@ -6,6 +6,7 @@
 #include "config.h"
 #include "assets/lang_config.h"
 #include "cw2017_battery_monitor.h"
+#include "home_screen.h"
 
 #include <esp_log.h>
 #include <esp_lcd_panel_vendor.h>
@@ -73,6 +74,10 @@ private:
             EnterWifiConfigMode();
             return;
         }
+        // If home screen is visible, OK is handled by home screen (enter function)
+        if (HomeScreen::GetInstance().IsVisible()) {
+            return;
+        }
         // In recording mode, OK toggles recording start/stop
         if (app.GetAppMode() == kModeRecording) {
             auto state = app.GetDeviceState();
@@ -86,9 +91,37 @@ private:
         app.ToggleChatState();
     }
 
-    void SwitchMode() {
+    void ShowHomeScreen() {
+        auto& hs = HomeScreen::GetInstance();
+        if (hs.IsVisible()) return;
+        
+        // Stop any active recording
         auto& app = Application::GetInstance();
-        app.SwitchAppMode();
+        if (app.GetDeviceState() == kDeviceStateRecording) {
+            app.StopRecording();
+        }
+        
+        // Define the two functions
+        static HomeFunction funcs[] = {
+            {"AI Q&A", "RAG Knowledge Base",
+                []() {
+                    auto& app = Application::GetInstance();
+                    app.SwitchToChatMode();
+                    HomeScreen::GetInstance().Hide();
+                },
+                []() {}
+            },
+            {"Recording", "Meeting Minutes",
+                []() {
+                    auto& app = Application::GetInstance();
+                    app.SwitchToRecordingMode();
+                    HomeScreen::GetInstance().Hide();
+                },
+                []() {}
+            },
+        };
+        hs.SetFunctions(funcs, 2);
+        hs.Show();
     }
 
     void InitializeButtons() {
@@ -128,7 +161,11 @@ private:
         // work onto the main task so LVGL and codec access stay on one thread.
         auto up = adc_button_[kAdcButtonUp];
         up->OnClick([this]() {
-            Application::GetInstance().Schedule([this]() { ChangeVolume(10); });
+            Application::GetInstance().Schedule([this]() {
+                // Home screen visible: UP navigates menu
+                if (HomeScreen::GetInstance().HandleKey(0, 0)) return;
+                ChangeVolume(10);
+            });
         });
         up->OnLongPress([this]() {
             Application::GetInstance().Schedule([this]() {
@@ -136,14 +173,14 @@ private:
                 GetDisplay()->ShowNotification(Lang::Strings::MAX_VOLUME);
             });
         });
-        // Double-click UP to switch between Chat and Recording mode
-        up->OnDoubleClick([this]() {
-            Application::GetInstance().Schedule([this]() { SwitchMode(); });
-        });
 
         auto down = adc_button_[kAdcButtonDown];
         down->OnClick([this]() {
-            Application::GetInstance().Schedule([this]() { ChangeVolume(-10); });
+            Application::GetInstance().Schedule([this]() {
+                // Home screen visible: DOWN navigates menu
+                if (HomeScreen::GetInstance().HandleKey(1, 0)) return;
+                ChangeVolume(-10);
+            });
         });
         down->OnLongPress([this]() {
             Application::GetInstance().Schedule([this]() {
@@ -154,12 +191,17 @@ private:
 
         auto ok = adc_button_[kAdcButtonOk];
         ok->OnClick([this]() {
-            Application::GetInstance().Schedule([this]() { ToggleChat(); });
+            Application::GetInstance().Schedule([this]() {
+                // Home screen visible: OK enters selected function
+                if (HomeScreen::GetInstance().HandleKey(2, 0)) return;
+                ToggleChat();
+            });
         });
-        // Long-press OK to switch between Chat and Recording mode
-        // (More reliable than double-click on ADC resistor ladder buttons)
+        // Long-press OK: Always show home screen (like FoloToy demo's "back to menu")
         ok->OnLongPress([this]() {
-            Application::GetInstance().Schedule([this]() { SwitchMode(); });
+            Application::GetInstance().Schedule([this]() {
+                ShowHomeScreen();
+            });
         });
     }
 

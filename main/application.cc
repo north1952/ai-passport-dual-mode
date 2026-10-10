@@ -10,6 +10,7 @@
 #include "system_info.h"
 #include "text_glyph_payload.h"
 #include "websocket_protocol.h"
+#include "home_screen.h"
 
 #include <driver/gpio.h>
 #include <esp_log.h>
@@ -372,6 +373,31 @@ void Application::HandleActivationDoneEvent() {
 
     // Release OTA object after activation is complete
     ota_.reset();
+
+    // Show home screen for function selection (like FoloToy demo)
+    // User selects which function to use; long-press OK to re-select
+    Schedule([this]() {
+        auto& hs = HomeScreen::GetInstance();
+        static HomeFunction funcs[] = {
+            {"AI Q&A", "RAG Knowledge Base",
+                [this]() {
+                    SwitchToChatMode();
+                    HomeScreen::GetInstance().Hide();
+                },
+                []() {}
+            },
+            {"Recording", "Meeting Minutes",
+                [this]() {
+                    SwitchToRecordingMode();
+                    HomeScreen::GetInstance().Hide();
+                },
+                []() {}
+            },
+        };
+        hs.SetFunctions(funcs, 2);
+        hs.Show();
+        ESP_LOGI(TAG, "Home screen shown after activation");
+    });
     auto& board = Board::GetInstance();
     board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
 
@@ -1431,6 +1457,31 @@ void Application::SwitchAppMode() {
             display->ShowNotification("Chat Mode");
             ESP_LOGI(TAG, "Switched to CHAT mode");
         }
+    });
+}
+
+void Application::SwitchToChatMode() {
+    Schedule([this]() {
+        // Stop recording if active
+        if (recording_streamer_.IsRunning()) {
+            recording_streamer_.Stop();
+            SetDeviceState(kDeviceStateIdle);
+        }
+        app_mode_ = kModeChat;
+        auto display = Board::GetInstance().GetDisplay();
+        display->SetStatus(Lang::Strings::STANDBY);
+        display->ShowNotification("AI Q&A Mode");
+        ESP_LOGI(TAG, "Switched to CHAT mode (from home screen)");
+    });
+}
+
+void Application::SwitchToRecordingMode() {
+    Schedule([this]() {
+        app_mode_ = kModeRecording;
+        auto display = Board::GetInstance().GetDisplay();
+        display->SetStatus("REC Ready");
+        display->ShowNotification("Recording Mode - OK to start");
+        ESP_LOGI(TAG, "Switched to RECORDING mode (from home screen)");
     });
 }
 
