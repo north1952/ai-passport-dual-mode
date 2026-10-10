@@ -1520,7 +1520,9 @@ void Application::HandleStopRecordingEvent() {
     uint32_t bytes = recording_streamer_.GetBytesSent();
     uint32_t duration_sec = bytes / REC_BYTES_PER_SEC;
     char msg[64];
-    snprintf(msg, sizeof(msg), "REC done: %umin %u sec", duration_sec / 60, duration_sec % 60);
+    snprintf(msg, sizeof(msg), "REC done: %lum %lu sec",
+             (unsigned long)(duration_sec / 60), (unsigned long)(duration_sec % 60));
     display->ShowNotification(msg);
-    ESP_LOGI(TAG, "Recording stopped. Duration: %u sec, Bytes: %u", duration_sec, bytes);
+    ESP_LOGI(TAG, "Recording stopped. Duration: %lu sec, Bytes: %lu",
+             (unsigned long)duration_sec, (unsigned long)bytes);
 }

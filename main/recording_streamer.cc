@@ -57,29 +57,13 @@ bool RecordingStreamer::Start() {
     running_.store(true);
 
     // Start the streamer task (priority 12, above audio input at 10)
-    BaseType_t ok = xTaskCreateStatic(
+    xTaskCreate(
         [](void* arg) {
             auto* self = static_cast<RecordingStreamer*>(arg);
             self->StreamerTask();
         },
-        "rec_stream",
-        4096,  // stack size
-        this,
-        12,    // priority
-        nullptr,
-        nullptr
-    ) == pdPASS;
-
-    // Fallback to dynamic allocation if static fails
-    if (!ok) {
-        xTaskCreate(
-            [](void* arg) {
-                auto* self = static_cast<RecordingStreamer*>(arg);
-                self->StreamerTask();
-            },
-            "rec_stream", 4096, this, 12, &task_handle_
-        );
-    }
+        "rec_stream", 4096, this, 12, &task_handle_
+    );
 
     ESP_LOGI(TAG, "Recording streamer started → %s:%d", server_ip_.c_str(), server_port_);
     return true;
