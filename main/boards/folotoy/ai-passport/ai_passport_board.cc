@@ -73,7 +73,22 @@ private:
             EnterWifiConfigMode();
             return;
         }
+        // In recording mode, OK toggles recording start/stop
+        if (app.GetAppMode() == kModeRecording) {
+            auto state = app.GetDeviceState();
+            if (state == kDeviceStateRecording) {
+                app.StopRecording();
+            } else if (state == kDeviceStateIdle) {
+                app.StartRecording();
+            }
+            return;
+        }
         app.ToggleChatState();
+    }
+
+    void SwitchMode() {
+        auto& app = Application::GetInstance();
+        app.SwitchAppMode();
     }
 
     void InitializeButtons() {
@@ -120,6 +135,10 @@ private:
                 GetAudioCodec()->SetOutputVolume(100);
                 GetDisplay()->ShowNotification(Lang::Strings::MAX_VOLUME);
             });
+        });
+        // Double-click UP to switch between Chat and Recording mode
+        up->OnDoubleClick([this]() {
+            Application::GetInstance().Schedule([this]() { SwitchMode(); });
         });
 
         auto down = adc_button_[kAdcButtonDown];

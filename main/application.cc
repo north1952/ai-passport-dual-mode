@@ -181,7 +181,8 @@ void Application::Run() {
         MAIN_EVENT_VAD_CHANGE | MAIN_EVENT_CLOCK_TICK | MAIN_EVENT_ERROR |
         MAIN_EVENT_NETWORK_CONNECTED | MAIN_EVENT_NETWORK_DISCONNECTED | MAIN_EVENT_TOGGLE_CHAT |
         MAIN_EVENT_START_LISTENING | MAIN_EVENT_STOP_LISTENING | MAIN_EVENT_ACTIVATION_DONE |
-        MAIN_EVENT_STATE_CHANGED | MAIN_EVENT_PLAYBACK_DRAINED;
+        MAIN_EVENT_STATE_CHANGED | MAIN_EVENT_PLAYBACK_DRAINED |
+        MAIN_EVENT_MODE_SWITCH | MAIN_EVENT_START_RECORDING | MAIN_EVENT_STOP_RECORDING;
 
     while (true) {
         auto bits = xEventGroupWaitBits(event_group_, ALL_EVENTS, pdTRUE, pdFALSE, portMAX_DELAY);
@@ -275,12 +276,30 @@ void Application::Run() {
             auto display = Board::GetInstance().GetDisplay();
             display->UpdateStatusBar();
 
+            // Update recording timer on display
+            if (GetDeviceState() == kDeviceStateRecording) {
+                display->SetStatus(recording_streamer_.GetStatusString().c_str());
+            }
+
             // Print debug info every 10 seconds
             if (clock_ticks_ % 10 == 0) {
                 SystemInfo::PrintHeapStats();
                 // SystemInfo::PrintTaskList();
                 // SystemInfo::PrintTaskCpuUsage(pdMS_TO_TICKS(1000));
             }
+        }
+
+        // === Dual-mode: Recording events ===
+        if (bits & MAIN_EVENT_MODE_SWITCH) {
+            HandleModeSwitchEvent();
+        }
+
+        if (bits & MAIN_EVENT_START_RECORDING) {
+            HandleStartRecordingEvent();
+        }
+
+        if (bits & MAIN_EVENT_STOP_RECORDING) {
+            HandleStopRecordingEvent();
         }
     }
 }
@@ -1376,4 +1395,132 @@ void Application::ResetProtocol() {
         // Reset protocol
         protocol_.reset();
     });
+}
+
+// ============================================================================
+// Dual-mode: Recording support
+// ============================================================================
+
+void Application::SwitchAppMode() {
+    Schedule([this]() {
+        // Cannot switch mode while actively recording or in a conversation
+        auto state = GetDeviceState();
+        if (state == kDeviceStateRecording || state == kDeviceStateListening ||
+            state == kDeviceStateSpeaking || state == kDeviceStateConnecting) {
+            auto display = Board::GetInstance().GetDisplay();
+            display->ShowNotification("Busy, cannot switch");
+            return;
+        }
+
+        // Stop recording if active
+        if (recording_streamer_.IsRunning()) {
+            recording_streamer_.Stop();
+            SetDeviceState(kDeviceStateIdle);
+        }
+
+        // Toggle mode
+        app_mode_ = (app_mode_ == kModeChat) ? kModeRecording : kModeChat;
+
+        auto display = Board::GetInstance().GetDisplay();
+        if (app_mode_ == kModeRecording) {
+            display->SetStatus("REC Mode");
+            display->ShowNotification("Recording Mode ON");
+            ESP_LOGI(TAG, "Switched to RECORDING mode");
+        } else {
+            display->SetStatus(Lang::Strings::STANDBY);
+            display->ShowNotification("Chat Mode");
+            ESP_LOGI(TAG, "Switched to CHAT mode");
+        }
+    });
+}
+
+void Application::StartRecording() {
+    xEventGroupSetBits(event_group_, MAIN_EVENT_START_RECORDING);
+}
+
+void Application::StopRecording() {
+    xEventGroupSetBits(event_group_, MAIN_EVENT_STOP_RECORDING);
+}
+
+void Application::HandleModeSwitchEvent() {
+    SwitchAppMode();
+}
+
+void Application::HandleStartRecordingEvent() {
+    auto state = GetDeviceState();
+    if (state != kDeviceStateIdle) {
+        ESP_LOGW(TAG, "Cannot start recording from state: %s",
+                 DeviceStateMachine::GetStateName(state));
+        return;
+    }
+    if (app_mode_ != kModeRecording) {
+        ESP_LOGW(TAG, "Not in recording mode");
+        return;
+    }
+
+    // Configure and start the streamer
+    recording_streamer_.SetServerIp(recording_server_ip_, recording_server_port_);
+    if (!recording_streamer_.Start()) {
+        auto display = Board::GetInstance().GetDisplay();
+        display->ShowNotification("REC start failed");
+        return;
+    }
+
+    // Enable voice processing (mic capture pipeline)
+    audio_service_.EnableVoiceProcessing(true);
+
+    SetDeviceState(kDeviceStateRecording);
+
+    // Start dedicated PCM capture task for UDP streaming
+    xTaskCreate(
+        [](void* arg) {
+            auto* app = static_cast<Application*>(arg);
+            std::vector<int16_t> pcm_buffer;
+            pcm_buffer.reserve(REC_CHUNK_SIZE / 2);  // 1600 samples = 100ms
+
+            while (app->recording_streamer_.IsRunning()) {
+                // Read 100ms of PCM from the codec
+                int samples_read = app->audio_service_.ReadAudioData(
+                    pcm_buffer, REC_SAMPLE_RATE, REC_CHUNK_SIZE / REC_SAMPLE_WIDTH);
+                if (samples_read > 0) {
+                    app->recording_streamer_.PushPcm(pcm_buffer.data(), samples_read);
+                } else {
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                }
+            }
+            vTaskDelete(NULL);
+        },
+        "rec_capture", 3072, this, 11, nullptr
+    );
+
+    auto display = Board::GetInstance().GetDisplay();
+    display->SetStatus("REC 0:00");
+    display->SetEmotion("happy");
+    ESP_LOGI(TAG, "Recording started → %s:%d", recording_server_ip_.c_str(), recording_server_port_);
+}
+
+void Application::HandleStopRecordingEvent() {
+    auto state = GetDeviceState();
+    if (state != kDeviceStateRecording) {
+        return;
+    }
+
+    // Stop the streamer
+    recording_streamer_.Stop();
+
+    // Disable voice processing
+    audio_service_.EnableVoiceProcessing(false);
+
+    SetDeviceState(kDeviceStateIdle);
+
+    auto display = Board::GetInstance().GetDisplay();
+    display->SetStatus(Lang::Strings::STANDBY);
+    display->SetEmotion("neutral");
+
+    uint32_t bytes = recording_streamer_.GetBytesSent();
+    uint32_t duration_sec = bytes / REC_BYTES_PER_SEC;
+    char msg[64];
+    snprintf(msg, sizeof(msg), "REC done: %umin %u sec", duration_sec / 60, duration_sec % 60);
+    display->ShowNotification(msg);
+    ESP_LOGI(TAG, "Recording stopped. Duration: %u sec, Bytes: %u", duration_sec, bytes);
 }

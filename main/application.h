@@ -20,6 +20,7 @@
 #include "device_state.h"
 #include "device_state_machine.h"
 #include "notify/notify_player.h"
+#include "recording_streamer.h"
 
 // Main event bits
 #define MAIN_EVENT_SCHEDULE             (1 << 0)
@@ -36,6 +37,9 @@
 #define MAIN_EVENT_STOP_LISTENING       (1 << 11)
 #define MAIN_EVENT_STATE_CHANGED        (1 << 12)
 #define MAIN_EVENT_PLAYBACK_DRAINED     (1 << 13)
+#define MAIN_EVENT_MODE_SWITCH          (1 << 14)
+#define MAIN_EVENT_START_RECORDING      (1 << 15)
+#define MAIN_EVENT_STOP_RECORDING       (1 << 16)
 
 
 enum AecMode {
@@ -118,6 +122,13 @@ public:
     AecMode GetAecMode() const { return aec_mode_; }
     void PlaySound(const std::string_view& sound);
     AudioService& GetAudioService() { return audio_service_; }
+
+    // Dual-mode: recording support
+    AppMode GetAppMode() const { return app_mode_; }
+    void SwitchAppMode();
+    void StartRecording();
+    void StopRecording();
+    RecordingStreamer& GetRecordingStreamer() { return recording_streamer_; }
     
     /**
      * Reset protocol resources (thread-safe)
@@ -154,6 +165,12 @@ private:
     int clock_ticks_ = 0;
     TaskHandle_t activation_task_handle_ = nullptr;
 
+    // Dual-mode: recording
+    AppMode app_mode_ = kModeChat;
+    RecordingStreamer recording_streamer_;
+    std::string recording_server_ip_ = "10.19.102.102";
+    int recording_server_port_ = 10096;
+
 
     // Event handlers
     void HandleStateChangedEvent();
@@ -186,6 +203,11 @@ private:
     
     // State change handler called by state machine
     void OnStateChanged(DeviceState old_state, DeviceState new_state);
+
+    // Dual-mode event handlers
+    void HandleModeSwitchEvent();
+    void HandleStartRecordingEvent();
+    void HandleStopRecordingEvent();
 };
 
 
